@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log
+*.log
+.git
+.gitignore
+Dockerfile
+docker-compose.yml
+package.json
+package-lock.json
+test

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0b12" />
+  <title>利阳·随心听</title>
+  <link rel="stylesheet" href="style.css?v=20261026d" />
+</head>
+<body>
+  <!-- 模糊背景层 -->
+  <div id="bg" class="bg"></div>
+
+  <!-- 主界面 -->
+  <main id="home" class="home">
+    <header class="topbar">
+      <div class="brand">利阳·随心听</div>
+      <div class="topbar-right">
+        <button id="sourceChip" class="btn btn--ghost src-chip" aria-label="当前播放音源，点击管理"><span>自动</span></button>
+        <button id="sourceBtn" class="btn btn--icon icon-btn" aria-label="音源管理"></button>
+        <button id="searchBtn" class="btn btn--icon icon-btn" aria-label="搜索"></button>
+        <button id="themeToggle" class="btn btn--icon icon-btn" aria-label="切换深浅色模式"></button>
+      </div>
+    </header>
+
+    <section class="hero">
+      <button id="shuffleBtn" class="shuffle-card">
+        <div id="shuffleIcon" class="shuffle-icon"></div>
+        <div class="shuffle-text">
+          <div class="shuffle-title">随机播放</div>
+          <div class="shuffle-sub">从热歌榜随机来一首</div>
+        </div>
+      </button>
+    </section>
+
+    <section class="list-tabs">
+      <button class="tab active" data-tab="board" id="tabBoard">榜单</button>
+      <button class="tab" data-tab="playlist" id="tabPlaylist">歌单</button>
+    </section>
+
+    <section class="boards" id="boardSection">
+      <div class="section-title">
+        <span>榜单</span>
+        <select id="boardPlatSelect" class="board-plat-select" aria-label="选择榜单平台">
+          <option value="ny">网易云</option>
+          <option value="kw">酷我</option>
+        </select>
+      </div>
+      <div id="boardChips" class="chips"></div>
+    </section>
+
+    <section class="playlists hidden" id="playlistSection">
+      <div class="section-title">
+        <span>热门歌单</span>
+        <button id="pasteOpenBtn" class="btn btn--ghost paste-open-btn">粘贴歌单</button>
+        <select id="playlistPlatSelect" class="board-plat-select" aria-label="选择歌单平台">
+          <option value="ny">网易云</option>
+          <option value="tx">QQ音乐</option>
+          <option value="kg">酷狗</option>
+        </select>
+      </div>
+      <div id="playlistPlatNote" class="plat-note hidden"></div>
+      <div id="playlistGrid" class="playlist-grid"></div>
+      <div id="playlistLoading" class="loading hidden">加载中…</div>
+    </section>
+
+    <section class="list-section">
+      <div class="section-title">
+        <span id="listTitle">热歌榜 · 精选</span>
+        <button id="playAllBtn" class="btn btn--ghost play-all"></button>
+      </div>
+      <div id="listMeta" class="list-meta"></div>
+      <ul id="songList" class="song-list"></ul>
+      <div id="listLoading" class="loading">加载中…</div>
+    </section>
+  </main>
+
+  <!-- 搜索面板 -->
+  <div id="searchPanel" class="search-panel hidden">
+    <div class="search-head">
+      <input id="searchInput" class="search-input" type="search" placeholder="搜索歌曲 / 歌手" autocomplete="off" />
+      <button id="searchClose" class="btn btn--icon icon-btn" aria-label="关闭搜索"></button>
+    </div>
+    <ul id="searchResults" class="song-list"></ul>
+    <div id="searchEmpty" class="empty hidden">输入关键词开始搜索</div>
+  </div>
+
+  <!-- 洛雪音源管理面板 -->
+  <div id="sourcePanel" class="search-panel hidden">
+    <div class="search-head">
+      <div class="panel-title">音源管理（兼容洛雪自定义源脚本）</div>
+      <button id="sourceClose" class="btn btn--icon icon-btn" aria-label="关闭音源管理"></button>
+    </div>
+    <div class="panel-hint">酷我/QQ/酷狗的网页取址接口已被平台关闭，无法直接播放。可导入洛雪自定义源脚本扩展取址能力。</div>
+    <div class="panel-section">播放音源（手动指定）</div>
+    <select id="sourcePick" class="panel-select"></select>
+    <div class="panel-hint">「自动」= 内置 → 洛雪脚本 → 跨源匹配 依次回退；手动指定后优先用该音源，取不到会自动回退。<br />切换后首页榜单与搜索会同步刷新：列表数据由对应引擎提供（网易云 / 酷我），点播放时再用所选音源取址（洛雪脚本只提供取址能力，不提供搜索与榜单接口）。</div>
+    <button id="sourceTestAll" class="btn btn--ghost panel-btn">测试全部音源</button>
+    <ul id="sourceList" class="source-list"></ul>
+    <div class="panel-section">从 URL 导入洛雪源脚本</div>
+    <input id="sourceUrl" class="search-input" type="url" placeholder="https://.../lx-music-source.js" />
+    <button id="sourceImportUrl" class="btn btn--primary panel-btn">导入 URL</button>
+    <div class="panel-section">或直接粘贴脚本内容</div>
+    <textarea id="sourceCode" class="panel-area" rows="5" placeholder="在此粘贴洛雪源脚本内容"></textarea>
+    <button id="sourceImportCode" class="btn btn--primary panel-btn">导入脚本</button>
+    <div id="sourceMsg" class="panel-msg"></div>
+  </div>
+
+  <!-- 粘贴歌单 / 曲目 面板 -->
+  <div id="pastePanel" class="search-panel hidden">
+    <div class="search-head">
+      <div class="panel-title">粘贴歌单 / 曲目</div>
+      <button id="pasteClose" class="btn btn--icon icon-btn" aria-label="关闭"></button>
+    </div>
+    <div class="panel-hint">支持三种输入：<br />① 网易云歌单链接（music.163.com/playlist?id=…）→ 直接读取曲目并播放；<br />② 其它平台歌单链接（QQ音乐 / 千千 / 酷狗 / 酷我 / KKBOX / Apple Music / Spotify）→ 自动解析出「歌名 - 歌手」再逐首匹配播放；<br />③ 曲目文本：每行一首，如「晴天 - 周杰伦」。解析后我会用搜索逐首匹配并播放（默认用酷我曲库匹配，网易搜索结果近期被平台污染、易匹配到翻唱，故仅建议手动选择时使用）。</div>
+    <textarea id="pasteArea" class="panel-area" rows="8" placeholder="粘贴歌单链接，或曲目文本：&#10;晴天 - 周杰伦&#10;稻香&#10;七里香 - 周杰伦"></textarea>
+    <div class="paste-row">
+      <select id="pasteSource" class="panel-select" aria-label="匹配搜索引擎">
+        <option value="auto">自动（酷我曲库·推荐）</option>
+        <option value="ny">网易云</option>
+        <option value="kw">酷我</option>
+      </select>
+      <button id="pasteGo" class="btn btn--primary panel-btn">解析并播放</button>
+    </div>
+    <div id="pasteMsg" class="panel-msg"></div>
+  </div>
+
+  <!-- 全屏播放器 -->
+  <div id="player" class="player hidden">
+    <div class="player-top">
+      <div class="player-src" id="playerSrc">—</div>
+      <button id="playerClose" class="btn btn--icon icon-btn" aria-label="收起播放器"></button>
+      <button id="playerQueueBtn" class="btn btn--icon icon-btn" aria-label="播放列表"></button>
+      <button id="themeToggleP" class="btn btn--icon icon-btn" aria-label="切换深浅色模式"></button>
+    </div>
+    <!-- 中部双屏：左右滑动切换「唱片 / 歌词」 -->
+    <div class="player-stage" id="playerStage">
+      <div class="pv pv-disc">
+        <div class="disc-wrap">
+          <div id="disc" class="disc">
+            <img id="playerCover" class="disc-cover" alt="cover" />
+          </div>
+        </div>
+        <div class="player-meta">
+          <div id="playerTitle" class="player-title">未知歌曲</div>
+          <div id="playerArtist" class="player-artist">未知歌手</div>
+        </div>
+      </div>
+      <div class="pv pv-lyric">
+        <div id="lyricBox" class="lyric-box">
+          <div id="lyricScroll" class="lyric-scroll"></div>
+        </div>
+        <button id="loOpen" class="lo-open" aria-label="歌词校准">歌词校准</button>
+        <div class="lyric-offset hidden" id="lyricOffsetBar">
+          <div class="lo-head">
+            <span class="lo-title">歌词校准</span>
+            <button id="loClose" class="lo-x" aria-label="关闭">✕</button>
+          </div>
+          <div class="lo-row">
+            <button class="lo-btn" id="loMinus5" aria-label="延后5秒">−5s</button>
+            <button class="lo-btn" id="loMinus1" aria-label="延后1秒">−1s</button>
+            <span class="lo-val" id="loVal">0.0s</span>
+            <button class="lo-btn" id="loPlus1" aria-label="提前1秒">+1s</button>
+            <button class="lo-btn" id="loPlus5" aria-label="提前5秒">+5s</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="stage-dots" id="stageDots">
+      <button class="dot active" data-i="0" aria-label="唱片"></button>
+      <button class="dot" data-i="1" aria-label="歌词"></button>
+    </div>
+    <div class="progress">
+      <span id="curTime" class="time">0:00</span>
+      <div id="progressBar" class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+      <span id="durTime" class="time">0:00</span>
+    </div>
+    <div class="controls">
+      <button id="prevBtn" class="btn ctrl-btn" aria-label="上一首"></button>
+      <button id="playBtn" class="btn ctrl-btn play" aria-label="播放/暂停"></button>
+      <button id="nextBtn" class="btn ctrl-btn" aria-label="下一首"></button>
+    </div>
+    <div class="mode-row">
+      <button id="modeBtn" class="btn btn--ghost mode-btn" aria-label="切换播放模式"></button>
+    </div>
+  </div>
+
+  <!-- 播放列表面板 -->
+  <div id="queuePanel" class="search-panel hidden">
+    <div class="search-head">
+      <div class="panel-title">播放列表</div>
+      <span id="queueCount" class="queue-count"></span>
+      <button id="queueClose" class="btn btn--icon icon-btn" aria-label="关闭"></button>
+    </div>
+    <ul id="queueList" class="song-list"></ul>
+    <div id="queueEmpty" class="empty hidden">还没有歌曲在播放列表</div>
+  </div>
+
+  <!-- 底部迷你播放器 -->
+  <div id="mini" class="mini hidden">
+    <img id="miniCover" class="mini-cover" alt="cover" />
+    <div class="mini-meta">
+      <div id="miniTitle" class="mini-title">未知歌曲</div>
+      <div id="miniArtist" class="mini-artist">未知歌手</div>
+    </div>
+    <button id="miniPrev" class="btn ctrl-btn" aria-label="上一首"></button>
+    <button id="miniPlay" class="btn ctrl-btn play" aria-label="播放/暂停"></button>
+    <button id="miniNext" class="btn ctrl-btn" aria-label="下一首"></button>
+    <button id="miniOpen" class="btn btn--icon icon-btn" aria-label="展开播放器"></button>
+  </div>
+
+  <audio id="audio" preload="metadata"></audio>
+  <script src="app.js?v=20261026p"></script>
+</body>
+</html>

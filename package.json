@@ -1,0 +1,15 @@
+{
+  "name": "lx-music-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "纯 Node 零依赖 Web 音乐播放器（酷我音源），参考洛雪音乐(LX Music)移动版架构",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/frontend.test.js",
+    "harvest": "node scripts/harvest_sources.js",
+    "harvest:dry": "node scripts/harvest_sources.js --dry-run"
+  },
+  "devDependencies": {
+    "jsdom": "^26.0.0"
+  }
+}

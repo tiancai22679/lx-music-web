@@ -1,0 +1,17 @@
+# 依赖（仅测试用 jsdom，运行时零依赖）
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 系统/编辑器文件
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# 生成的数据（harvest 报告等）
+data/
+
+# 日志
+*.log
