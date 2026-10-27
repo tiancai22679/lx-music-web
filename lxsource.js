@@ -6,7 +6,7 @@
 //   宿主 send('request', { source, action, info }) -> 脚本的 request 处理器返回 Promise
 //     action='musicUrl' 时 info = { musicInfo, type }
 //
-// 参考实现：https://github.com/lyswhut/lx-music-source
+// 参考 LX Music 1.9.1 协议实现（宿主侧运行时；本文件不包含任何第三方源脚本代码）
 const vm = require('vm')
 const crypto = require('crypto')
 const zlib = require('zlib')
