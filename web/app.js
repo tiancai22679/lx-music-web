@@ -294,9 +294,16 @@ async function loadList(id, name) {
   els.listLoading.classList.remove('hidden')
   els.songList.innerHTML = ''
   try {
-    const data = state.listKind === 'playlist'
-      ? await API.playlist(id, state.playlistPlat, 1000)
-      : await API.hot(id, 1000, state.boardPlat)
+    let data
+    if (state.listKind === 'playlist' && (state.playlistPlat === 'tx' || state.playlistPlat === 'kg')) {
+      // QQ/酷狗歌曲详情接口被平台签名/风控封死，直连拉不到曲目；
+      // 改用「解析歌单链接 + 逐首匹配」的导入流程，让用户仍能看到并播放该歌单
+      data = await loadPlaylistViaImport(id, name)
+    } else if (state.listKind === 'playlist') {
+      data = await API.playlist(id, state.playlistPlat, 1000)
+    } else {
+      data = await API.hot(id, 1000, state.boardPlat)
+    }
     const list = data.list || []
     state.playlist = list
     state.listTitle = name
@@ -313,6 +320,26 @@ async function loadList(id, name) {
   }
 }
 
+// QQ/酷狗歌单：直连歌曲接口受平台签名/风控限制拉不到曲目，
+// 改为「解析歌单分享链接拿到曲目名 → 逐首搜索匹配」的导入流程，返回可播放歌曲列表
+async function loadPlaylistViaImport(id, name) {
+  const plat = state.playlistPlat
+  const url = plat === 'tx'
+    ? `https://y.qq.com/n/ryqq/playlist/${id}`
+    : `https://www.kugou.com/yy/special/single/${id}.html`
+  const parsed = await API.parsePlaylist(url)
+  if (!parsed.ok) throw new Error(parsed.error || '歌单解析失败')
+  const items = (parsed.songs || []).map((s) => ({ name: s.name, artist: s.artist }))
+  if (!items.length) throw new Error('未解析到曲目（歌单可能已下架）')
+  const m = await API.match(items, preferSource)
+  const songs = []
+  let miss = 0
+  ;(m.results || []).forEach((r) => { if (r.ok && r.song) songs.push(r.song); else miss++ })
+  if (!songs.length) throw new Error('逐首匹配均未命中，可改用「粘贴歌单导入」手动匹配')
+  const note = [parsed.warning, miss ? `${miss} 首未匹配已跳过（共 ${m.total} 首）` : ''].filter(Boolean).join('；')
+  return { list: songs, source: plat, note }
+}
+
 // 当前用于随机播放 / 音源切换刷新的列表 id（优先用歌单，否则用榜单）
 function currentListId() {
   if (state.listKind === 'playlist' && state.playlistId) return state.playlistId
@@ -327,7 +354,7 @@ async function renderPlaylists() {
   const plat = state.playlistPlat
   if (plat === 'tx' || plat === 'kg') {
     els.playlistPlatNote.classList.remove('hidden')
-    els.playlistPlatNote.textContent = (plat === 'tx' ? 'QQ音乐' : '酷狗') + '歌单可浏览，但歌曲播放接口受平台限制，点击后若无法播放属正常现象（已回退网易云的会标“已回退”）'
+    els.playlistPlatNote.textContent = (plat === 'tx' ? 'QQ音乐' : '酷狗') + '歌单可浏览，点击后通过「解析歌单+逐首匹配」导入播放（受平台限制，少量曲目可能匹配不到）'
   } else {
     els.playlistPlatNote.classList.add('hidden')
   }

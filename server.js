@@ -1050,7 +1050,7 @@ async function handleApi(req, res, pathname, query) {
     // QQ/酷狗歌单曲目接口被平台封死（签名/WAF），改为用户贴曲目文本，搜索引擎逐首匹配后播放
     if (pathname === '/api/match') {
       const payload = await readBody(req)
-      const items = Array.isArray(payload.items) ? payload.items.slice(0, 80) : []
+      const items = Array.isArray(payload.items) ? payload.items.slice(0, 100) : []
       // 引擎选择：网易匿名搜索接口被污染（"晴天 周杰伦"前10全是翻唱/搬运号），
       // 酷我 search.kuwo.cn 排序正常（原唱第一），故默认（auto）走酷我；显式选网易才走网易
       const reqSrc = String(payload.source || 'auto')
