@@ -547,6 +547,7 @@ function removeSong(i) {
       audio.pause(); audio.removeAttribute('src')
       els.playerTitle.textContent = ''; els.playerArtist.textContent = ''
       els.playerCover.removeAttribute('src')
+      setDocTitle(null) // 队列已空，标签标题还原
     }
   }
 }
@@ -584,12 +585,21 @@ function playFromList(list, i) {
   [...els.songList.children].forEach((c, idx) => c.classList.toggle('playing', idx === i && state.searchList === null))
 }
 
+// 浏览器标签标题：播放时把「歌名 - 歌手」放进标题栏（▶ 播放中 / ⏸ 已暂停），无歌曲时还原原始标题
+const BASE_TITLE = document.title || '利阳·随心听'
+function setDocTitle(song, playing) {
+  if (!song) { document.title = BASE_TITLE; return }
+  const name = [song.name, song.singer].filter(Boolean).join(' - ')
+  document.title = (playing === false ? '⏸ ' : '▶ ') + name + ' · ' + BASE_TITLE
+}
+
 async function playCurrent() {
   const song = state.playlist[state.index]
   if (!song) return
   // 迷你播放器 / 播放器 元信息
   els.playerTitle.textContent = song.name
   els.playerArtist.textContent = song.singer
+  setDocTitle(song)
   // 先按歌曲自身平台显示，取到地址后再更新为实际出地址的音源
   els.playerSrc.textContent = (sourceLabel(song.source) || '音乐') + '音乐'
   els.miniTitle.textContent = song.name
@@ -648,6 +658,8 @@ function setPlaying(p) {
   setIcon(els.playBtn, p ? 'pause' : 'play')
   setIcon(els.miniPlay, p ? 'pause' : 'play')
   els.disc.classList.toggle('spinning', p)
+  // 标签标题同步播放/暂停状态
+  setDocTitle(state.playlist[state.index], p)
 }
 function togglePlay() {
   if (!audio.src) { if (state.index >= 0) playCurrent(); return }
