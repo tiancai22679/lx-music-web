@@ -297,22 +297,40 @@ function nyEapiParams(url, obj) {
   const enc = Buffer.concat([c.update(Buffer.from(data, 'utf8')), c.final()])
   return enc.toString('hex').toUpperCase()
 }
+function nyTrack(it) {
+  return {
+    id: String(it.id),
+    source: 'ny',
+    name: decodeHtml(it.name || ''),
+    singer: decodeHtml((it.artists || []).map((a) => a.name).join('、')),
+    album: decodeHtml((it.album && it.album.name) || ''),
+    duration: fmtDur(Math.round((it.duration || 0) / 1000)),
+    cover: (it.album && it.album.picUrl) || it.picUrl || '',
+    durationMs: it.duration || 0,
+  }
+}
+
 const ny = {
-  async search(keyword, limit = 30) {
-    const url = `https://music.163.com/api/search/get?s=${encodeURIComponent(keyword)}&type=1&limit=${Math.min(limit, 50)}&offset=0`
-    const r = await fetchText(url, { headers: { 'User-Agent': NY_UA, Referer: 'https://music.163.com/' }, timeout: 12000 })
-    const j = JSON.parse(r.text)
-    const list = (j.result && j.result.songs) || []
-    return list.map((it) => ({
-      id: String(it.id),
-      source: 'ny',
-      name: decodeHtml(it.name || ''),
-      singer: decodeHtml((it.artists || []).map((a) => a.name).join('、')),
-      album: decodeHtml((it.album && it.album.name) || ''),
-      duration: fmtDur(Math.round((it.duration || 0) / 1000)),
-      cover: '', // 封面需再查 detail，搜索接口不带 picUrl
-      durationMs: it.duration || 0,
-    }))
+  async search(keyword, limit = 100) {
+    const out = []
+    const seen = new Set()
+    const pageSize = 50 // 网易云搜索单页上限 50，多页累加以支持更大结果数
+    for (let off = 0; off < limit; off += pageSize) {
+      const take = Math.min(pageSize, limit - off)
+      const url = `https://music.163.com/api/search/get?s=${encodeURIComponent(keyword)}&type=1&limit=${take}&offset=${off}`
+      const r = await fetchText(url, { headers: { 'User-Agent': NY_UA, Referer: 'https://music.163.com/' }, timeout: 12000 })
+      const j = JSON.parse(r.text)
+      const list = (j.result && j.result.songs) || []
+      if (!list.length) break
+      for (const it of list) {
+        const id = String(it.id)
+        if (seen.has(id)) continue
+        seen.add(id)
+        out.push(nyTrack(it))
+      }
+      if (list.length < take) break
+    }
+    return out
   },
 
   // 歌单搜索（type=1000）：用于「搜索歌单并一键加入播放列表」。
@@ -372,17 +390,23 @@ const ny = {
     const j = JSON.parse(r.text)
     const pl = j.result
     if (!pl) throw new Error('榜单获取失败')
-    const tracks = pl.tracks || []
-    return tracks.slice(0, limit).map((it) => ({
-      id: String(it.id),
-      source: 'ny',
-      name: decodeHtml(it.name || ''),
-      // 注意：网易 playlist/detail 的字段是 artists，曾误写成 arists，导致榜单歌手全为空
-      singer: decodeHtml((it.artists || []).map((a) => a.name).join('、')),
-      album: decodeHtml((it.album && it.album.name) || ''),
-      duration: fmtDur(Math.round((it.duration || 0) / 1000)),
-      cover: (it.album && it.album.picUrl) || '',
-    }))
+    let tracks = (pl.tracks || []).map(nyTrack)
+    const total = pl.trackCount || tracks.length
+    // 歌单/榜单的 detail 往往只返回前一批 tracks，其余用 track/all 分页补齐，确保大歌单不被截断
+    if (tracks.length < total && tracks.length < limit) {
+      let offset = tracks.length
+      const target = Math.min(limit, total)
+      while (offset < target) {
+        const pageSize = Math.min(500, target - offset)
+        const pr = await fetchText(`https://music.163.com/api/playlist/track/all?id=${boardId}&offset=${offset}&limit=${pageSize}`, { headers: { 'User-Agent': NY_UA, Referer: 'https://music.163.com/' }, timeout: 15000 })
+        const pj = JSON.parse(pr.text)
+        const songs = (pj.songs || []).map(nyTrack)
+        if (!songs.length) break
+        tracks = tracks.concat(songs)
+        offset += songs.length
+      }
+    }
+    return tracks.slice(0, limit)
   },
 
   async lyric(id) {
@@ -999,7 +1023,7 @@ async function handleApi(req, res, pathname, query) {
     if (pathname === '/api/playlist') {
       const id = query.get('id')
       const plat = query.get('platform') || 'ny'
-      const limit = Math.min(parseInt(query.get('limit')) || 100, 200)
+      const limit = Math.min(parseInt(query.get('limit')) || 200, 1000)
       let list = [], note = '', source = plat
       try {
         if (plat === 'ny') list = await ny.hot(id, limit)
@@ -1082,7 +1106,7 @@ async function handleApi(req, res, pathname, query) {
     if (pathname === '/api/search') {
       const type = query.get('type') || 'song'
       const kw2 = (query.get('keyword') || '').trim()
-      const limit = Math.min(parseInt(query.get('limit')) || (type === 'playlist' ? 20 : 30), 50)
+      const limit = Math.min(parseInt(query.get('limit')) || (type === 'playlist' ? 20 : 100), 200)
       if (!kw2) return sendJSON(res, { error: '缺少 keyword' }, 400)
       const pref = parseSourceParam(query.get('source') || query.get('from') || 'auto')
       // 歌单搜索：固定走网易云（歌单详情接口已验证可用，可完整取歌），与单曲搜索的来源选择无关

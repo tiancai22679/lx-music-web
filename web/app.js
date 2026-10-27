@@ -3,10 +3,10 @@
 // ---------- API ----------
 const API = {
   boards: (source) => fetchJSON('/api/boards' + (source ? `?source=${encodeURIComponent(source)}` : '')),
-  hot: (board, limit = 100, source) =>
+  hot: (board, limit = 200, source) =>
     fetchJSON(`/api/hot?board=${encodeURIComponent(board)}&limit=${limit}` +
       (source ? `&source=${encodeURIComponent(source)}` : '')),
-  search: (kw, limit = 30, source) =>
+  search: (kw, limit = 100, source) =>
     fetchJSON(`/api/search?keyword=${encodeURIComponent(kw)}&limit=${limit}` +
       (source ? `&source=${encodeURIComponent(source)}` : '')),
   song: (id, source, name, singer, prefer, raw) =>
@@ -18,7 +18,7 @@ const API = {
   playlists: (limit = 20, platform) =>
     fetchJSON(`/api/playlists?limit=${limit}` + (platform ? `&platform=${encodeURIComponent(platform)}` : '')),
   // 歌单歌曲详情：按歌单所属平台取歌（网易云可用，QQ/酷狗可能受限）
-  playlist: (id, platform, limit = 100) =>
+  playlist: (id, platform, limit = 200) =>
     fetchJSON(`/api/playlist?platform=${encodeURIComponent(platform || 'ny')}&id=${encodeURIComponent(id)}&limit=${limit}`),
   // 粘贴歌单/曲目：把解析出的 [{name, artist}] 交给后端逐首搜索匹配
   match: (items, source) =>
@@ -295,8 +295,8 @@ async function loadList(id, name) {
   els.songList.innerHTML = ''
   try {
     const data = state.listKind === 'playlist'
-      ? await API.playlist(id, state.playlistPlat, 100)
-      : await API.hot(id, 100, state.boardPlat)
+      ? await API.playlist(id, state.playlistPlat, 200)
+      : await API.hot(id, 200, state.boardPlat)
     const list = data.list || []
     state.playlist = list
     state.listTitle = name
@@ -422,23 +422,26 @@ function renderSongList(list, container, opts = {}) {
         <div class="song-artist">${escapeHtml(song.singer)}</div>
       </div>
       <div class="song-dur">${song.duration || ''}</div>` +
-      (isQueue ? `<div class="song-actions">
+      (isQueue
+        ? `<div class="song-actions">
         <button class="qbtn" data-act="up" title="上移">↑</button>
         <button class="qbtn" data-act="down" title="下移">↓</button>
         <button class="qbtn qbtn-del" data-act="del" title="移出队列">✕</button>
-      </div>` : '')
+      </div>`
+        : `<div class="song-actions">
+        <button class="qbtn qbtn-add" data-act="add" title="加入播放列表">＋</button>
+      </div>`)
     li.onclick = () => playFromList(list, i)
-    if (isQueue) {
-      li.querySelectorAll('.qbtn').forEach((btn) => {
-        btn.onclick = (e) => {
-          e.stopPropagation() // 不触发整行的播放
-          const act = btn.getAttribute('data-act')
-          if (act === 'up') moveSong(i, -1)
-          else if (act === 'down') moveSong(i, 1)
-          else if (act === 'del') removeSong(i)
-        }
-      })
-    }
+    li.querySelectorAll('.qbtn').forEach((btn) => {
+      btn.onclick = (e) => {
+        e.stopPropagation() // 不触发整行的播放
+        const act = btn.getAttribute('data-act')
+        if (act === 'add') { addToQueue(song); return }
+        if (act === 'up') moveSong(i, -1)
+        else if (act === 'down') moveSong(i, 1)
+        else if (act === 'del') removeSong(i)
+      }
+    })
     container.appendChild(li)
   })
 }
@@ -447,6 +450,20 @@ function renderSongList(list, container, opts = {}) {
 function refreshLists() {
   renderSongList(state.playlist, els.songList, { queue: true })
   if (!els.queuePanel.classList.contains('hidden')) renderQueue()
+}
+
+// 把一首歌追加到「当前播放列表（队列）」：不替换现有队列、不自动播放，
+// 便于从搜索结果 / 歌单里逐首攒成一个大播放列表
+function addToQueue(song) {
+  if (!song || !song.id) return
+  state.playlist.push({
+    id: song.id, source: song.source, name: song.name, singer: song.singer,
+    album: song.album || '', duration: song.duration || '', cover: song.cover || '',
+    raw: song.raw || null,
+  })
+  refreshLists()
+  if (!els.queuePanel.classList.contains('hidden')) renderQueue()
+  toast(`已加入播放列表（共 ${state.playlist.length} 首）`)
 }
 
 // ---------- 播放队列管理：调整顺序 / 移除 ----------
@@ -826,13 +843,13 @@ els.shuffleBtn.onclick = async () => {
     const plat = isPlaylist ? state.playlistPlat : state.boardPlat
     const id = currentListId()
     let data = isPlaylist
-      ? await API.playlist(id, plat, 100)
-      : await API.hot(id, 100, plat)
+      ? await API.playlist(id, plat, 200)
+      : await API.hot(id, 200, plat)
     if (!isPlaylist && (!data.list || !data.list.length)) {
       // 兜底：当前榜单拿不到歌时切回该平台的默认榜再试一次
       const def = DEFAULT_BOARD[plat] || DEFAULT_BOARD.ny
       state.board = def.id
-      data = await API.hot(def.id, 100, plat)
+      data = await API.hot(def.id, 200, plat)
     }
     const list = data.list || []
     state.playlist = list
@@ -970,7 +987,7 @@ els.pasteGo.onclick = async () => {
   if (parsed.url && parsed.url.plat === 'ny') {
     els.pasteMsg.textContent = '正在读取网易云歌单…'
     try {
-      const data = await API.playlist(parsed.url.id, 'ny', 100)
+      const data = await API.playlist(parsed.url.id, 'ny', 200)
       const list = data.list || []
       if (!list.length) throw new Error(data.note || '未读取到曲目')
       closePaste()
@@ -1046,7 +1063,7 @@ els.searchBtn.onclick = () => {
 els.searchClose.onclick = () => els.searchPanel.classList.add('hidden')
 async function runSearch(kw) {
   try {
-    const data = await API.search(kw, 30, preferSource)
+    const data = await API.search(kw, 100, preferSource)
     const list = data.list || []
     state.searchList = list
     state.listSource = data.source || nativeOf(preferSource)
@@ -1292,6 +1309,15 @@ window.addEventListener('error', (e) => {
   document.body.appendChild(box)
   setTimeout(() => box.remove(), 10000)
 })
+// 轻量提示条（如「已加入播放列表」）
+function toast(msg) {
+  const box = document.createElement('div')
+  box.className = 'toast'
+  box.textContent = msg
+  box.onclick = () => box.remove()
+  document.body.appendChild(box)
+  setTimeout(() => box.remove(), 2500)
+}
 // 把 emoji 占位替换成 SVG 图标（HTML 里只留 aria-label，避免 JS 未就绪时露出怪字符）
 function paintIcons() {
   setIcon(els.searchBtn, 'search')
