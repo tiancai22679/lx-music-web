@@ -54,6 +54,11 @@ function detect(url) {
     if (m) return { plat: 'ny', id: m[1], name: '网易云音乐' }
     return null
   }
+  // 汽水音乐 / 抖音音乐 分享歌单（短链 qishui.douyin.com/s/xxx 或 music.douyin.com/qishui/share/playlist）
+  // 客户端歌单 API 签名/混淆拿不到，但分享页 SSR 把数据内嵌在 loaderData JSON 里，可直接取
+  if (/qishui\.douyin\.com/.test(u) || (/music\.douyin\.com/.test(u) && /qishui\/share\/(?:playlist|song)/.test(u))) {
+    return { plat: 'qs', id: u, name: '汽水音乐' }
+  }
   if (/y\.qq\.com|qq\.com/.test(u)) {
     m = u.match(/disstid=(\d+)/) || u.match(/\/playlist\/(\d+)/)
     if (m) return { plat: 'tx', id: m[1], name: 'QQ音乐' }
@@ -253,11 +258,106 @@ async function parseSpotify(id, fetchText) {
   return { title, songs, warning }
 }
 
+// ---- 汽水音乐 / 抖音音乐 分享歌单 ----
+// 分享页 SSR 把歌单数据内嵌在 <script> 的 loaderData JSON 中：
+//   loaderData.playlist_page.playlistInfo -> { title, count_tracks, owner:{nickname} }
+//   loaderData.playlist_page.medias[]      -> { entity:{ track:{ name, artists:[{name}] } } }
+// 客户端歌单接口签名/混淆无法直连，但分享页 HTML 内含完整 JSON，故走「取页面内嵌 JSON」路线。
+async function parseQishui(url, fetchText) {
+  const r = await fetchText(url, {
+    headers: hdrs({ Referer: 'https://music.douyin.com/', Accept: 'text/html,application/xhtml+xml' }),
+    decompress: true,
+    timeout: 20000,
+  })
+  const html = r.text || ''
+  // 1) 取出含 loaderData 的 <script> 块
+  const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1])
+  const data = scripts.find((s) => s.includes('loaderData') && s.includes('playlistInfo'))
+  if (!data) throw new Error('未找到内嵌歌单数据（分享页结构可能已变更或被风控拦截）')
+  // 2) 从脚本块里提取根 JSON 对象（兼容 `window.x = {...}` 赋值前缀或纯 JSON）
+  const json = extractRootJson(data)
+  const ld = json && json.loaderData
+  if (!ld) throw new Error('loaderData 解析失败')
+  // 3) 在 JSON 内递归定位 playlistInfo 与 medias（路径随版本可能变化，故不写死）
+  const pi = findObjByKey(ld, 'playlistInfo')
+  const medias = findObjByKey(ld, 'medias')
+  if (!pi || !Array.isArray(medias)) throw new Error('歌单信息缺失')
+  const title = (pi.title || '').trim()
+  const owner = ((pi.owner && (pi.owner.nickname || pi.owner.name)) || '').trim()
+  const count = pi.count_tracks || medias.length
+  const songs = []
+  for (const m of medias) {
+    const tr = (m && m.entity && m.entity.track) || null
+    if (!tr) continue
+    let name = '', artist = ''
+    if (typeof tr === 'object') {
+      name = tr.name || tr.title || ''
+      const arts = tr.artists || tr.artist || []
+      if (Array.isArray(arts)) artist = arts.map((a) => (typeof a === 'object' ? a.name : a)).filter(Boolean).join('、')
+      else if (typeof arts === 'string') artist = arts
+    } else if (typeof tr === 'string') {
+      // 极少数情况下 track 是字符串化的 Python dict，做兜底正则提取
+      name = pyGet(tr, ['title', 'name']) || ''
+      artist = pyGet(tr, ['artist', 'author', 'singer']) || ''
+    }
+    name = (name || '').trim()
+    if (name) songs.push({ name, artist: (artist || '').trim() })
+  }
+  if (!songs.length) throw new Error('未提取到歌曲')
+  const warning = songs.length < count ? `汽水音乐仅返回 ${songs.length}/${count} 首（个别条目无音频元数据，已跳过）` : null
+  return { title, owner, songs, warning }
+}
+
+// 从脚本文本里取出根 JSON 对象（去掉可能的 `window.x =` 赋值前缀，再按括号平衡截到根 `{...}`）
+function extractRootJson(s) {
+  let t = String(s || '').trim()
+  t = t.replace(/^\s*(?:window\s*\.\s*)?(?:var|let|const)?\s*[A-Za-z_$][\w$]*\s*=\s*/, '')
+  t = t.replace(/;+\s*$/, '')
+  const start = t.indexOf('{')
+  if (start < 0) return null
+  let depth = 0, inStr = false, q = '', end = -1
+  for (let i = start; i < t.length; i++) {
+    const c = t[i]
+    if (inStr) {
+      if (c === '\\') { i++; continue }
+      if (c === q) inStr = false
+      continue
+    }
+    if (c === '"' || c === "'" || c === '`') { inStr = true; q = c; continue }
+    if (c === '{') depth++
+    else if (c === '}') { depth--; if (depth === 0) { end = i; break } }
+  }
+  if (end < 0) return null
+  try { return JSON.parse(t.slice(start, end + 1)) } catch (_) { return null }
+}
+
+// 递归在对象/数组里找第一个键名为 key 的对象值
+function findObjByKey(o, key) {
+  if (o == null || typeof o !== 'object') return null
+  if (Array.isArray(o)) {
+    for (const v of o) { const r = findObjByKey(v, key); if (r) return r }
+    return null
+  }
+  if (Object.prototype.hasOwnProperty.call(o, key) && o[key] != null && typeof o[key] === 'object') return o[key]
+  for (const k of Object.keys(o)) { const r = findObjByKey(o[k], key); if (r) return r }
+  return null
+}
+
+// 从字符串化 Python dict 里取某个键的值（兜底；处理 ' 与 " 两种引号及转义）
+function pyGet(s, keys) {
+  for (const k of keys) {
+    const re = new RegExp("(['\"])" + k + "\\1\\s*:\\s*(['\"])((?:\\\\.|[^\\2\\\\])*?)\\2")
+    const m = s.match(re)
+    if (m) return m[2].replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+  }
+  return ''
+}
+
 // ---- 统一入口 ----
 async function parse(url, fetchText) {
   const d = detect(url)
   if (!d) {
-    return { ok: false, error: '未能识别平台。目前支持：网易云音乐、QQ音乐、千千音乐、酷狗、酷我、KKBOX、Apple Music、Spotify' }
+    return { ok: false, error: '未能识别平台。目前支持：网易云音乐、QQ音乐、千千音乐、酷狗、酷我、KKBOX、Apple Music、Spotify、汽水音乐（抖音）' }
   }
   // 解析器统一走「解压」版 fetchText（部分站点强制 gzip）；通用接口不受影响
   const ft = (u, o = {}) => fetchText(u, { ...o, decompress: true })
@@ -272,6 +372,7 @@ async function parse(url, fetchText) {
       case 'kkbox': r = await parseKKBox(d.id, ft); break
       case 'apple': r = await parseApple(d.id, url, ft); break
       case 'spotify': r = await parseSpotify(d.id, ft); break
+      case 'qs': r = await parseQishui(url, ft); break
       default: return { ok: false, error: '未知平台' }
     }
     const songs = (r.songs || []).map((s) => ({ name: s.name, artist: s.artist }))

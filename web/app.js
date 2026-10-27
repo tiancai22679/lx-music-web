@@ -932,7 +932,7 @@ function parsePasteInput(text) {
   if (nyLink) return { url: { plat: 'ny', id: nyLink[1] }, items: [] }
   // 其它平台歌单链接：交给后端 /api/parse_playlist 多平台解析
   const anyUrl = t.match(/https?:\/\/[^\s]+/i)
-  const platRe = /y\.qq\.com|kugou\.com|kuwo\.cn|music\.91q\.com|kma\.kkbox\.com|music\.apple\.com|open\.spotify\.com|music\.migu\.cn/i
+  const platRe = /y\.qq\.com|kugou\.com|kuwo\.cn|music\.91q\.com|kma\.kkbox\.com|music\.apple\.com|open\.spotify\.com|music\.migu\.cn|qishui\.douyin\.com|music\.douyin\.com/i
   const isPlatUrl = anyUrl && platRe.test(anyUrl[0])
   const items = []
   t.split(/\r?\n/).forEach((line) => {
