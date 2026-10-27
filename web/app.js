@@ -15,8 +15,8 @@ const API = {
       (prefer && prefer !== 'auto' ? `&prefer=${encodeURIComponent(prefer)}` : '') +
       (raw && Object.keys(raw).length ? `&raw=${encodeURIComponent(JSON.stringify(raw))}` : '')),
   lyric: (id, source) => fetchJSON(`/api/lyric?id=${encodeURIComponent(id)}&source=${encodeURIComponent(source || 'ny')}`),
-  playlists: (limit = 20, platform) =>
-    fetchJSON(`/api/playlists?limit=${limit}` + (platform ? `&platform=${encodeURIComponent(platform)}` : '')),
+  playlists: (limit = 20, platform, offset = 0) =>
+    fetchJSON(`/api/playlists?limit=${limit}` + (platform ? `&platform=${encodeURIComponent(platform)}` : '') + `&offset=${offset}`),
   // 歌单歌曲详情：按歌单所属平台取歌（网易云可用，QQ/酷狗可能受限）
   playlist: (id, platform, limit = 1000) =>
     fetchJSON(`/api/playlist?platform=${encodeURIComponent(platform || 'ny')}&id=${encodeURIComponent(id)}&limit=${limit}`),
@@ -70,6 +70,7 @@ const state = {
   board: '3778678',   // 网易云热歌榜（默认）
   boardPlat: 'ny',    // 榜单所属平台（网易云/酷我），与播放音源相互独立，可下拉手动选择
   playlistPlat: 'ny', // 歌单所属平台（网易云/QQ/酷狗），与榜单平台相互独立
+  playlistOffset: 0,  // 歌单已加载数量（分页 offset），切换平台时归零
   listKind: 'board',  // 'board' | 'playlist'：当前列表是榜单还是歌单
   playlistId: null,   // 歌单模式下选中的歌单 id
   listName: '热歌榜', // 当前列表名称（用于音源切换后刷新时回填标题）
@@ -180,6 +181,7 @@ const els = {
   playlistSection: $('playlistSection'),
   playlistGrid: $('playlistGrid'),
   playlistLoading: $('playlistLoading'),
+  playlistMore: $('playlistMore'),
 }
 
 // ---------- 工具 ----------
@@ -346,20 +348,20 @@ function currentListId() {
   return state.board
 }
 
-// ---------- 渲染：热门歌单 ----------
-async function renderPlaylists() {
-  els.playlistLoading.classList.remove('hidden')
-  els.playlistGrid.innerHTML = ''
-  // QQ/酷狗歌单可浏览，但歌曲详情接口受平台签名/风控限制，点击后可能无法播放，先提示用户
+// ---------- 渲染：热门歌单（分页加载，不再固定 20 个）----------
+const PLAYLIST_PAGE = 20
+
+// 歌单分页：reset=true 清空并从第 1 页重头加载；否则以已加载数量作 offset 追加下一页
+async function loadPlaylistsPage(reset) {
   const plat = state.playlistPlat
-  if (plat === 'tx' || plat === 'kg') {
-    els.playlistPlatNote.classList.remove('hidden')
-    els.playlistPlatNote.textContent = (plat === 'tx' ? 'QQ音乐' : '酷狗') + '歌单可浏览，点击后通过「解析歌单+逐首匹配」导入播放（受平台限制，少量曲目可能匹配不到）'
-  } else {
-    els.playlistPlatNote.classList.add('hidden')
+  if (reset) {
+    state.playlistOffset = 0
+    els.playlistGrid.innerHTML = ''
+    els.playlistMore.classList.add('hidden')
   }
+  els.playlistLoading.classList.remove('hidden')
   try {
-    const data = await API.playlists(20, plat)
+    const data = await API.playlists(PLAYLIST_PAGE, plat, state.playlistOffset)
     const list = data.playlists || []
     // 后端若因接口受限回退到网易云，把说明一并展示
     if (data.note && els.playlistPlatNote.classList.contains('hidden')) {
@@ -368,8 +370,9 @@ async function renderPlaylists() {
     } else if (data.note) {
       els.playlistPlatNote.textContent = data.note
     }
-    if (!list.length) {
+    if (reset && !list.length) {
       els.playlistGrid.innerHTML = '<div class="empty">暂无可用的热门歌单</div>'
+      els.playlistMore.classList.add('hidden')
       return
     }
     list.forEach((p) => {
@@ -384,11 +387,31 @@ async function renderPlaylists() {
       card.onclick = () => selectPlaylist(p)
       els.playlistGrid.appendChild(card)
     })
+    state.playlistOffset += list.length
+    if (data.hasMore) {
+      els.playlistMore.classList.remove('hidden')
+      els.playlistMore.textContent = `加载更多（已显示 ${state.playlistOffset} 个）`
+    } else {
+      els.playlistMore.classList.add('hidden')
+    }
   } catch (e) {
     els.playlistGrid.innerHTML = `<div class="empty">歌单加载失败：${escapeHtml(e.message)}</div>`
+    els.playlistMore.classList.add('hidden')
   } finally {
     els.playlistLoading.classList.add('hidden')
   }
+}
+
+async function renderPlaylists() {
+  // QQ/酷狗歌单可浏览，但歌曲详情接口受平台限制，点击后走解析+匹配导入，先提示用户
+  const plat = state.playlistPlat
+  if (plat === 'tx' || plat === 'kg') {
+    els.playlistPlatNote.classList.remove('hidden')
+    els.playlistPlatNote.textContent = (plat === 'tx' ? 'QQ音乐' : '酷狗') + '歌单可浏览，点击后通过「解析歌单+逐首匹配」导入播放（受平台限制，少量曲目可能匹配不到）'
+  } else {
+    els.playlistPlatNote.classList.add('hidden')
+  }
+  await loadPlaylistsPage(true)
 }
 
 // 把歌曲列表区块滚入视野，避免歌单网格较高时「已加载却看不见」的错觉
@@ -958,6 +981,8 @@ els.playlistPlatSelect.onchange = () => {
   els.listTitle.textContent = '热门歌单 · 精选'
   renderPlaylists()
 }
+// 「加载更多」：以已加载数量作 offset 继续拉下一页歌单
+els.playlistMore.onclick = () => loadPlaylistsPage(false)
 
 // ---------- 粘贴歌单 / 曲目 ----------
 // QQ/酷狗等平台歌单曲目接口被平台封死，改为：用户贴曲目文本 → 后端逐首搜索匹配 → 匹配到的直接播放

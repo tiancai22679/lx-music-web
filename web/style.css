@@ -680,6 +680,7 @@ html, body {
 .qbtn-add { color: var(--ok); font-weight: 700; }
 .qbtn-add:hover { background: var(--ok); color: #fff; }
 
+.playlist-more { display: block; margin: 12px auto 0; min-height: var(--tap); padding: 0 20px; }
 .hidden { display: none !important; }
 
 /* ---------- 浅色模式：剩余硬编码表面的覆写 ---------- */

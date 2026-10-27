@@ -157,15 +157,37 @@ async function parseKugou(id, fetchText) {
   const r = await fetchText(`https://www.kugou.com/yy/special/single/${id}.html`, { headers: hdrs(), timeout: 15000 })
   const html = r.text
   const songs = []
-  const re = /<span class="text"[^>]*>\s*<i>([\s\S]*?)<\/i>/g
-  let m
-  while ((m = re.exec(html))) {
-    const text = stripTags(m[1])
-    if (!text.includes(' - ')) continue
-    const idx = text.indexOf(' - ')
-    const artist = text.slice(0, idx).trim()
-    const song = text.slice(idx + 3).trim()
-    if (song) songs.push({ name: song, artist })
+  // ① 优先解析页面内嵌的 var data=[...] 歌曲 JSON（字段明确：songname / singername）。
+  //    注意：酷狗公开歌单页只提供前 30 首（内嵌 JSON 与渲染出的列表都是 30），
+  //    更深的曲目需签名接口，匿名访问拿不到，故 30 是平台硬限制。
+  const kp = html.indexOf('var data=')
+  if (kp >= 0) {
+    const arrStart = html.indexOf('[', kp)
+    const raw = sliceBalanced(html, arrStart, '[', ']')
+    if (raw) {
+      try {
+        const arr = JSON.parse(raw)
+        for (const it of arr) {
+          const name = String(it.songname || it.name || '').trim()
+          const a0 = (it.authors && it.authors[0]) || null
+          const artist = String(it.singername || (a0 && a0.author_name) || '').trim()
+          if (name) songs.push({ name: decodeHtml(name), artist: decodeHtml(artist) })
+        }
+      } catch (_) { /* 内嵌 JSON 解析失败则回落正则 */ }
+    }
+  }
+  // ② 回落：从渲染出的 <span class="text"> 文本抽取（歌手 - 歌名）
+  if (!songs.length) {
+    const re = /<span class="text"[^>]*>\s*<i>([\s\S]*?)<\/i>/g
+    let m
+    while ((m = re.exec(html))) {
+      const text = stripTags(m[1])
+      if (!text.includes(' - ')) continue
+      const idx = text.indexOf(' - ')
+      const artist = text.slice(0, idx).trim()
+      const song = text.slice(idx + 3).trim()
+      if (song) songs.push({ name: song, artist })
+    }
   }
   let title = ''
   const sp = html.match(/specialInfo\s*=\s*({[\s\S]*?})\s*;/)

@@ -368,9 +368,9 @@ const ny = {
   },
 
   // 热门歌单：官方「歌单广场」按热度排序（cat=全部、order=hot），无需登录
-  async playlists(limit = 20) {
+  async playlists(limit = 20, offset = 0) {
     const cat = encodeURIComponent('全部')
-    const url = `https://music.163.com/api/playlist/list?cat=${cat}&type=hot&order=hot&offset=0&total=true&limit=${limit}`
+    const url = `https://music.163.com/api/playlist/list?cat=${cat}&type=hot&order=hot&offset=${offset}&total=true&limit=${limit}`
     const r = await fetchText(url, { headers: { 'User-Agent': NY_UA, Referer: 'https://music.163.com/' }, timeout: 15000 })
     const j = JSON.parse(r.text)
     const arr = j.playlists || []
@@ -942,10 +942,10 @@ async function handleApi(req, res, pathname, query) {
       })
     }
     // ---------- 第三方平台「热门歌单」列表（仅网易云/QQ/酷狗可免登录抓取） ----------
-    async function qqPlaylists(limit = 20) {
+    async function qqPlaylists(limit = 20, offset = 0) {
       const url = 'https://c.y.qq.com/splcloud/fcgi-bin/fcg_get_diss_by_tag.fcg?g_tk=5381&loginUin=0&hostUin=0'
         + '&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq&needNewCode=0'
-        + '&categoryId=10000000&sortId=5&sin=0&ein=' + (limit - 1) + '&rnd=0.1'
+        + '&categoryId=10000000&sortId=5&sin=' + offset + '&ein=' + (offset + limit - 1) + '&rnd=0.1'
       const r = await fetchText(url, { headers: { Referer: 'https://y.qq.com/portal/playlist.html', 'User-Agent': NY_UA }, timeout: 15000 })
       const j = JSON.parse(r.text)
       const list = (j.data && j.data.list) || []
@@ -957,8 +957,10 @@ async function handleApi(req, res, pathname, query) {
         creator: (it.creator && it.creator.name) || '',
       }))
     }
-    async function kgPlaylists(limit = 20) {
-      const url = 'http://mobilecdnbj.kugou.com/api/v3/tag/specialList?plat=0&page=1&tagid=0&pagesize=' + limit + '&ugc=1&sort=2&with_cover=1'
+    async function kgPlaylists(limit = 20, offset = 0) {
+      // 酷狗按 page 分页：page = offset/limit + 1（前端每次用同一 limit 翻页）
+      const page = Math.floor(offset / limit) + 1
+      const url = 'http://mobilecdnbj.kugou.com/api/v3/tag/specialList?plat=0&page=' + page + '&tagid=0&pagesize=' + limit + '&ugc=1&sort=2&with_cover=1'
       const r = await fetchText(url, { headers: { Referer: 'https://www.kugou.com/', 'User-Agent': NY_UA }, timeout: 15000 })
       const j = JSON.parse(r.text)
       const list = (j.data && j.data.info) || []
@@ -1007,19 +1009,21 @@ async function handleApi(req, res, pathname, query) {
 
     if (pathname === '/api/playlists') {
       const plat = query.get('platform') || 'ny'
-      const limit = Math.min(parseInt(query.get('limit')) || 20, 40)
-      let list = [], note = '', source = plat
+      const limit = Math.min(parseInt(query.get('limit')) || 20, 60)
+      const offset = Math.max(parseInt(query.get('offset')) || 0, 0)
+      let list = [], note = '', source = plat, hasMore = false
       try {
-        if (plat === 'tx') list = await qqPlaylists(limit)
-        else if (plat === 'kg') list = await kgPlaylists(limit)
-        else list = await ny.playlists(limit)
+        if (plat === 'tx') list = await qqPlaylists(limit, offset)
+        else if (plat === 'kg') list = await kgPlaylists(limit, offset)
+        else list = await ny.playlists(limit, offset)
       } catch (_) { list = [] }
-      if (!list.length) {
-        // 该平台歌单接口受限，回退网易云并如实说明
-        try { list = await ny.playlists(limit) } catch (_) {}
-        if (list.length) { note = (plat === 'tx' ? 'QQ音乐' : plat === 'kg' ? '酷狗' : plat) + '歌单接口受限，已回退网易云'; source = 'ny' }
+      hasMore = list.length >= limit
+      // 仅首页（offset=0）在平台受限时回退网易云，避免翻页后混入网易云歌单
+      if (!list.length && offset === 0) {
+        try { list = await ny.playlists(limit, 0) } catch (_) {}
+        if (list.length) { note = (plat === 'tx' ? 'QQ音乐' : plat === 'kg' ? '酷狗' : plat) + '歌单接口受限，已回退网易云'; source = 'ny'; hasMore = list.length >= limit }
       }
-      return sendJSON(res, { playlists: list, source, note })
+      return sendJSON(res, { playlists: list, source, note, hasMore, offset })
     }
     if (pathname === '/api/playlist') {
       const id = query.get('id')
