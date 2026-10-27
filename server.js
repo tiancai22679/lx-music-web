@@ -186,7 +186,7 @@ function kwSearchUrl(keyword, limit) {
   )
 }
 const kw = {
-  async search(keyword, limit = 30) {
+  async search(keyword, limit = 50) {
     const url = kwSearchUrl(keyword, limit)
     const r = await fetchText(url, { timeout: 12000 })
     if (r.status !== 200) throw new Error('search HTTP ' + r.status)
@@ -386,25 +386,26 @@ const ny = {
   },
 
   async hot(boardId = '3778678', limit = 100) {
-    const r = await fetchText(`https://music.163.com/api/playlist/detail?id=${boardId}`, { headers: { 'User-Agent': NY_UA, Referer: 'https://music.163.com/' }, timeout: 15000 })
+    // 必须带 os=pc cookie：匿名请求 playlist/detail 只回前 10 首预览，带上后回完整曲目列表
+    const r = await fetchText(`https://music.163.com/api/playlist/detail?id=${boardId}`, { headers: { 'User-Agent': NY_UA, Referer: 'https://music.163.com/', cookie: 'os=pc' }, timeout: 15000 })
     const j = JSON.parse(r.text)
     const pl = j.result
-    if (!pl) throw new Error('榜单获取失败')
+    if (!pl) throw new Error('歌单获取失败')
+    // detail 经常只返回前一小批 tracks（个别歌单仅 10 首，且 trackCount 可能缺失），
+    // 故以 track/all 分页作为权威补齐来源，按 id 去重，拉满至 limit 或来源耗尽为止
     let tracks = (pl.tracks || []).map(nyTrack)
-    const total = pl.trackCount || tracks.length
-    // 歌单/榜单的 detail 往往只返回前一批 tracks，其余用 track/all 分页补齐，确保大歌单不被截断
-    if (tracks.length < total && tracks.length < limit) {
-      let offset = tracks.length
-      const target = Math.min(limit, total)
-      while (offset < target) {
-        const pageSize = Math.min(500, target - offset)
-        const pr = await fetchText(`https://music.163.com/api/playlist/track/all?id=${boardId}&offset=${offset}&limit=${pageSize}`, { headers: { 'User-Agent': NY_UA, Referer: 'https://music.163.com/' }, timeout: 15000 })
-        const pj = JSON.parse(pr.text)
-        const songs = (pj.songs || []).map(nyTrack)
-        if (!songs.length) break
-        tracks = tracks.concat(songs)
-        offset += songs.length
-      }
+    const seen = new Set(tracks.map((t) => t.id))
+    const total = pl.trackCount || 0
+    let offset = tracks.length
+    while (tracks.length < limit) {
+      if (total && tracks.length >= total) break
+      const pageSize = Math.min(500, limit - tracks.length)
+      const pr = await fetchText(`https://music.163.com/api/playlist/track/all?id=${boardId}&offset=${offset}&limit=${pageSize}`, { headers: { 'User-Agent': NY_UA, Referer: 'https://music.163.com/', cookie: 'os=pc' }, timeout: 15000 })
+      const pj = JSON.parse(pr.text)
+      const songs = (pj.songs || []).map(nyTrack)
+      if (!songs.length) break
+      for (const s of songs) { if (seen.has(s.id)) continue; seen.add(s.id); tracks.push(s) }
+      offset += songs.length
     }
     return tracks.slice(0, limit)
   },
@@ -1023,7 +1024,7 @@ async function handleApi(req, res, pathname, query) {
     if (pathname === '/api/playlist') {
       const id = query.get('id')
       const plat = query.get('platform') || 'ny'
-      const limit = Math.min(parseInt(query.get('limit')) || 200, 1000)
+      const limit = Math.min(parseInt(query.get('limit')) || 1000, 2000)
       let list = [], note = '', source = plat
       try {
         if (plat === 'ny') list = await ny.hot(id, limit)

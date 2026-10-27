@@ -92,7 +92,7 @@ function detect(url) {
 // ---- 各平台解析器 ----
 async function parseNetease(id, fetchText) {
   const r = await fetchText(`https://music.163.com/api/playlist/detail?id=${id}`, {
-    headers: hdrs({ Referer: 'https://music.163.com/' }), timeout: 15000,
+    headers: hdrs({ Referer: 'https://music.163.com/', cookie: 'os=pc' }), timeout: 15000,
   })
   const j = JSON.parse(r.text)
   const result = j.result || j.playlist || {}

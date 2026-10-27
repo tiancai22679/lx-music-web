@@ -18,7 +18,7 @@ const API = {
   playlists: (limit = 20, platform) =>
     fetchJSON(`/api/playlists?limit=${limit}` + (platform ? `&platform=${encodeURIComponent(platform)}` : '')),
   // 歌单歌曲详情：按歌单所属平台取歌（网易云可用，QQ/酷狗可能受限）
-  playlist: (id, platform, limit = 200) =>
+  playlist: (id, platform, limit = 1000) =>
     fetchJSON(`/api/playlist?platform=${encodeURIComponent(platform || 'ny')}&id=${encodeURIComponent(id)}&limit=${limit}`),
   // 粘贴歌单/曲目：把解析出的 [{name, artist}] 交给后端逐首搜索匹配
   match: (items, source) =>
@@ -295,8 +295,8 @@ async function loadList(id, name) {
   els.songList.innerHTML = ''
   try {
     const data = state.listKind === 'playlist'
-      ? await API.playlist(id, state.playlistPlat, 200)
-      : await API.hot(id, 200, state.boardPlat)
+      ? await API.playlist(id, state.playlistPlat, 1000)
+      : await API.hot(id, 1000, state.boardPlat)
     const list = data.list || []
     state.playlist = list
     state.listTitle = name
@@ -843,13 +843,13 @@ els.shuffleBtn.onclick = async () => {
     const plat = isPlaylist ? state.playlistPlat : state.boardPlat
     const id = currentListId()
     let data = isPlaylist
-      ? await API.playlist(id, plat, 200)
-      : await API.hot(id, 200, plat)
+      ? await API.playlist(id, plat, 1000)
+      : await API.hot(id, 1000, plat)
     if (!isPlaylist && (!data.list || !data.list.length)) {
       // 兜底：当前榜单拿不到歌时切回该平台的默认榜再试一次
       const def = DEFAULT_BOARD[plat] || DEFAULT_BOARD.ny
       state.board = def.id
-      data = await API.hot(def.id, 200, plat)
+      data = await API.hot(def.id, 1000, plat)
     }
     const list = data.list || []
     state.playlist = list
@@ -987,7 +987,7 @@ els.pasteGo.onclick = async () => {
   if (parsed.url && parsed.url.plat === 'ny') {
     els.pasteMsg.textContent = '正在读取网易云歌单…'
     try {
-      const data = await API.playlist(parsed.url.id, 'ny', 200)
+      const data = await API.playlist(parsed.url.id, 'ny', 1000)
       const list = data.list || []
       if (!list.length) throw new Error(data.note || '未读取到曲目')
       closePaste()
