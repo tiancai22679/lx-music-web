@@ -9,6 +9,7 @@
 - 📋 **榜单**：网易云官方 65 个榜单（飙升 / 新歌 / 原创 / 热歌 / 古典 / 电音 / 说唱 …）
 - 💿 **全屏播放器**：模糊封面背景 + 旋转黑胶 + 歌词 + 进度拖拽 + 上一首/下一首 + 随机/顺序切换
 - 📱 **移动端优先**：手机浏览器竖屏体验最佳，底部迷你播放器
+- 📥 **粘贴歌单导入**：贴「歌名 - 歌手」列表（或网易云/QQ/千千/酷狗/酷我/KKBOX/Apple/Spotify/**汽水音乐（抖音）**分享链接），后端逐首用酷我/网易云匹配，生成可顺序播放的队列；轻量、不挑来源
 - 🎵 **音源管理**：内置原创的洛雪(LX Music 1.9.1)源脚本运行时，可导入**你自行提供**的洛雪源脚本扩展取址能力；每个音源都能**一键测试**取址是否可用，脚本可**删除**
 
 ## 目录结构
@@ -174,6 +175,8 @@ docker compose up -d --build
 | 接口 | 说明 |
 | --- | --- |
 | `GET /api/boards?source=` | 榜单列表。`source` 可为 `auto`/`ny`/`kw`/`脚本id:音源名`，缺省等价 `auto`（网易云） |
+| `GET /api/parse_playlist?url=...` | 多平台歌单链接解析：识别网易云 / QQ / 千千 / 酷狗 / 酷我 / KKBOX / Apple / Spotify / **汽水音乐（抖音）** 分享链接，返回 `{ok, playlist_title, songs:[{name,artist}], formatted}` |
+| `POST /api/match` | 粘贴歌单导入：把 `[{name, artist}]` 逐首用酷我/网易云搜索匹配，返回每首最匹配的一首（带 `id`/`source`），前端据此生成可播放队列 |
 | `GET /api/hot?board=3778678&limit=100&source=` | 某榜单歌曲（酷我榜用 `board=16`） |
 | `GET /api/search?keyword=...&source=` | 搜索，同样支持 `source`（也兼容旧的 `from=kw`） |
 | `GET /api/song?id=&source=&name=&singer=&prefer=&raw=` | 取播放地址（`prefer` 为手动指定的音源 id，`auto` 表示自动回退；`raw` 为列表项携带的脚本原始 id 字段 JSON） |
