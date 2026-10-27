@@ -972,6 +972,16 @@ async function handleApi(req, res, pathname, query) {
         creator: it.username || '',
       }))
     }
+    // 清掉控制字符 / 私用区字符 / 替换符（酷我 nickname 偶发 U+E201 等，会显示成乱码方块）
+    function cleanNickname(s) {
+      let out = ''
+      for (const ch of String(s || '')) {
+        const c = ch.codePointAt(0)
+        if (c < 0x20 || c === 0xfffd || (c >= 0xe000 && c <= 0xf8ff)) continue
+        out += ch
+      }
+      return out.trim()
+    }
     // 酷我官方歌单广场接口需签名（实测返回 "The request is illegal!"），
     // 改用其开放的检索接口 ft=playlist 按关键词取歌单：pn=页码(0 起)、rn=每页条数
     async function kwPlaylists(limit = 20, offset = 0) {
@@ -987,7 +997,8 @@ async function handleApi(req, res, pathname, query) {
         name: decodeHtml(it.name || ''),
         cover: it.pic || it.hts_pic || '',
         playCount: parseInt(it.playcnt) || 0,
-        creator: it.nickname || '',
+        // 酷我 nickname 偶发私用区/控制字符（如 U+E201），清掉避免卡片显示乱码方块
+        creator: cleanNickname(it.nickname || ''),
       }))
     }
     // 酷我歌单曲目：走开放 legacy 接口 nplserver.kuwo.cn，无需签名/登录，
@@ -1150,6 +1161,8 @@ async function handleApi(req, res, pathname, query) {
               const sc = scoreOf(it, s)
               if (sc > best) { best = sc; hit = s }
             }
+            // 注：曾尝试「主引擎未命中时用备选引擎(酷我↔网易云)重试」以提升命中率，
+            // 但会让请求量翻倍，在上游限流时反而拉低整体命中（实测波动 9~31），故暂不启用。
             results[i] = hit ? { ok: true, query: it, song: hit } : { ok: false, query: it, reason: '未找到匹配' }
           } catch (_) {
             results[i] = { ok: false, query: it, reason: '搜索失败' }

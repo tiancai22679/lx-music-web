@@ -69,7 +69,7 @@ const state = {
   listTitle: '热歌榜 · 精选',
   board: '3778678',   // 网易云热歌榜（默认）
   boardPlat: 'ny',    // 榜单所属平台（网易云/酷我），与播放音源相互独立，可下拉手动选择
-  playlistPlat: 'ny', // 歌单所属平台（网易云/QQ/酷狗），与榜单平台相互独立
+  playlistPlat: 'kw', // 歌单平台默认酷我（匿名接口最完整：可取全量曲目且原生 id 可直接播放）；与榜单平台相互独立
   playlistOffset: 0,  // 歌单已加载数量（分页 offset），切换平台时归零
   listKind: 'board',  // 'board' | 'playlist'：当前列表是榜单还是歌单
   playlistId: null,   // 歌单模式下选中的歌单 id
@@ -1407,7 +1407,7 @@ function paintIcons() {
   try {
     // 榜单列表用所选平台（默认网易云，可下拉切换酷我），与播放音源相互独立
     els.platSelect.value = state.boardPlat
-    // 歌单平台默认网易云（可下拉切 QQ / 酷狗）
+    // 歌单平台默认酷我（可下拉切 网易云 / QQ / 酷狗）
     els.playlistPlatSelect.value = state.playlistPlat
     state.board = (DEFAULT_BOARD[state.boardPlat] || DEFAULT_BOARD.ny).id
     state.listName = (DEFAULT_BOARD[state.boardPlat] || DEFAULT_BOARD.ny).name
