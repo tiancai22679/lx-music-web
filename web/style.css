@@ -2,6 +2,7 @@
    设计约束：零依赖、零构建；暗色玻璃拟态；所有可点元素具备 hover / focus-visible / active 三态。 */
 
 :root {
+  color-scheme: dark;
   /* 表面层次：从最底层到最上层，逐级提亮 */
   --surface-1: rgba(255, 255, 255, 0.045);
   --surface-2: rgba(255, 255, 255, 0.075);
@@ -41,12 +42,13 @@
   --track: rgba(255, 255, 255, 0.13);     /* 进度条底槽 */
   --pill-bg: #fff;                        /* 主按钮（播放键）底 */
   --pill-fg: #111;                        /* 主按钮文字 */
-  --select-bg: var(--select-bg);                   /* 下拉原生选项底 */
-  --select-fg: var(--select-fg);                   /* 下拉原生选项字 */
+  --select-bg: #1c1c26;                           /* 下拉原生选项底（跟随暗色主题） */
+  --select-fg: #f4f4f8;                           /* 下拉原生选项字（浅色，保证可读） */
 }
 
 /* ---------- 浅色模式：覆写变量 ---------- */
 :root.theme-light {
+  color-scheme: light;
   --surface-1: rgba(0, 0, 0, 0.03);
   --surface-2: rgba(0, 0, 0, 0.055);
   --surface-3: rgba(0, 0, 0, 0.09);
