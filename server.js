@@ -972,6 +972,24 @@ async function handleApi(req, res, pathname, query) {
         creator: it.username || '',
       }))
     }
+    // 酷我官方歌单广场接口需签名（实测返回 "The request is illegal!"），
+    // 改用其开放的检索接口 ft=playlist 按关键词取歌单：pn=页码(0 起)、rn=每页条数
+    async function kwPlaylists(limit = 20, offset = 0) {
+      const pn = Math.floor(offset / limit)
+      const url = 'http://search.kuwo.cn/r.s?client=kt&all=' + encodeURIComponent('热门')
+        + '&pn=' + pn + '&rn=' + limit + '&uid=794762570&ver=kwplayer_ar_9.2.2.1&vipver=1&show_copyright_off=1&newver=1'
+        + '&cluster=0&strategy=2012&encoding=utf8&rformat=json&vermerge=1&mobi=1&issubtitle=1&ft=playlist'
+      const r = await fetchText(url, { timeout: 15000 })
+      const j = JSON.parse(r.text)
+      const list = j.abslist || []
+      return list.slice(0, limit).map((it) => ({
+        id: String(it.playlistid || it.DC_TARGETID),
+        name: decodeHtml(it.name || ''),
+        cover: it.pic || it.hts_pic || '',
+        playCount: parseInt(it.playcnt) || 0,
+        creator: it.nickname || '',
+      }))
+    }
     // 歌单歌曲详情：网易云可用；QQ/酷狗的歌曲详情接口多为签名/风控保护，多数情况下会失败
     async function qqPlaylistSongs(disstid, limit = 100) {
       const url = 'https://c.y.qq.com/v8/fcg-bin/fcg_v8_playlist_cp.fcg?type=1&disstid=' + disstid
@@ -1015,6 +1033,7 @@ async function handleApi(req, res, pathname, query) {
       try {
         if (plat === 'tx') list = await qqPlaylists(limit, offset)
         else if (plat === 'kg') list = await kgPlaylists(limit, offset)
+        else if (plat === 'kw') list = await kwPlaylists(limit, offset)
         else list = await ny.playlists(limit, offset)
       } catch (_) { list = [] }
       hasMore = list.length >= limit
@@ -1034,6 +1053,8 @@ async function handleApi(req, res, pathname, query) {
         if (plat === 'ny') list = await ny.hot(id, limit)
         else if (plat === 'tx') list = await qqPlaylistSongs(id, limit)
         else if (plat === 'kg') list = await kgPlaylistSongs(id, limit)
+        // 酷我无匿名歌单曲目接口，前端走「解析+匹配」导入，此处不误当网易云 id 处理
+        else if (plat === 'kw') { list = []; note = '酷我歌单歌曲请通过「解析+匹配」导入' }
         else list = await ny.hot(id, limit)
       } catch (e) {
         note = (plat === 'tx' ? 'QQ音乐' : plat === 'kg' ? '酷狗' : plat) + '歌单歌曲接口受限，暂无法播放'

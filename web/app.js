@@ -288,8 +288,11 @@ function renderListMeta(data) {
     (note ? `<span class="lm-fallback">${escapeHtml(note)}</span>` : '')
 }
 
+// 直连歌曲接口受限的平台（QQ/酷狗/酷我）：点击歌单后走「解析歌单链接 + 逐首匹配」导入流程
+const LIMIT_PLATS = new Set(['tx', 'kg', 'kw'])
+
 // 通用列表加载：榜单走 /api/hot（按榜单平台），歌单走 /api/playlist（按歌单平台，
-// 网易云可用，QQ/酷狗歌曲接口受限时后端会返回 note 提示无法播放）。
+// 网易云可用，QQ/酷狗/酷我歌曲接口受限时后端会返回 note 提示无法播放）。
 async function loadList(id, name) {
   state.listName = name
   els.listTitle.textContent = name + ' · 精选'
@@ -297,7 +300,7 @@ async function loadList(id, name) {
   els.songList.innerHTML = ''
   try {
     let data
-    if (state.listKind === 'playlist' && (state.playlistPlat === 'tx' || state.playlistPlat === 'kg')) {
+    if (state.listKind === 'playlist' && LIMIT_PLATS.has(state.playlistPlat)) {
       // QQ/酷狗歌曲详情接口被平台签名/风控封死，直连拉不到曲目；
       // 改用「解析歌单链接 + 逐首匹配」的导入流程，让用户仍能看到并播放该歌单
       data = await loadPlaylistViaImport(id, name)
@@ -328,7 +331,9 @@ async function loadPlaylistViaImport(id, name) {
   const plat = state.playlistPlat
   const url = plat === 'tx'
     ? `https://y.qq.com/n/ryqq/playlist/${id}`
-    : `https://www.kugou.com/yy/special/single/${id}.html`
+    : plat === 'kw'
+      ? `https://www.kuwo.cn/playlist_detail/${id}`
+      : `https://www.kugou.com/yy/special/single/${id}.html`
   const parsed = await API.parsePlaylist(url)
   if (!parsed.ok) throw new Error(parsed.error || '歌单解析失败')
   const items = (parsed.songs || []).map((s) => ({ name: s.name, artist: s.artist }))
@@ -405,7 +410,10 @@ async function loadPlaylistsPage(reset) {
 async function renderPlaylists() {
   // QQ/酷狗歌单可浏览，但歌曲详情接口受平台限制，点击后走解析+匹配导入，先提示用户
   const plat = state.playlistPlat
-  if (plat === 'tx' || plat === 'kg') {
+  if (plat === 'kw') {
+    els.playlistPlatNote.classList.remove('hidden')
+    els.playlistPlatNote.textContent = '酷我歌单可浏览，点击后通过「解析+匹配」导入（公开页仅提供前约 20 首）'
+  } else if (plat === 'tx' || plat === 'kg') {
     els.playlistPlatNote.classList.remove('hidden')
     els.playlistPlatNote.textContent = (plat === 'tx' ? 'QQ音乐' : '酷狗') + '歌单可浏览，点击后通过「解析歌单+逐首匹配」导入播放（受平台限制，少量曲目可能匹配不到）'
   } else {
