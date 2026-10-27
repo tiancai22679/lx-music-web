@@ -990,7 +990,38 @@ async function handleApi(req, res, pathname, query) {
         creator: it.nickname || '',
       }))
     }
-    // 歌单歌曲详情：网易云可用；QQ/酷狗的歌曲详情接口多为签名/风控保护，多数情况下会失败
+    // 酷我歌单曲目：走开放 legacy 接口 nplserver.kuwo.cn，无需签名/登录，
+    // 可一次取完整歌单（实测 482 首歌单 rn=500 全量返回），pn 为页码(0 起)、rn 为每页条数
+    async function kwPlaylistSongs(pid, limit = 500) {
+      const out = []
+      let pn = 0
+      let total = 0
+      while (out.length < limit) {
+        const url = 'http://nplserver.kuwo.cn/pl.svc?op=getlistinfo&pn=' + pn + '&rn=500&pid=' + pid
+          + '&encode=utf8&keyset=pl2012&vipver=1&pcmp4=1'
+        const r = await fetchText(url, { timeout: 15000 })
+        const j = JSON.parse(r.text)
+        if (j.result !== 'ok') break
+        const list = j.musiclist || []
+        if (!list.length) break
+        if (!total) total = parseInt(j.total) || 0
+        out.push(...list)
+        if (total && out.length >= total) break
+        if (list.length < 500) break
+        pn++
+      }
+      return out.slice(0, limit).map((it) => ({
+        id: String(it.id),
+        source: 'kw',
+        name: decodeHtml(it.name || ''),
+        singer: decodeHtml(it.artist || ''),
+        album: decodeHtml(it.album || ''),
+        duration: fmtDur(parseInt(it.duration) || 0),
+        cover: it.albumpic || it.musicPic || '',
+        durationMs: (parseInt(it.duration) || 0) * 1000,
+      }))
+    }
+    // 歌单歌曲详情：网易云/酷我可用；QQ/酷狗的歌曲详情接口多为签名/风控保护，多数情况下会失败
     async function qqPlaylistSongs(disstid, limit = 100) {
       const url = 'https://c.y.qq.com/v8/fcg-bin/fcg_v8_playlist_cp.fcg?type=1&disstid=' + disstid
         + '&format=json&g_tk=5381&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq&needNewCode=0&uin=0&hostUin=0'
@@ -1053,8 +1084,8 @@ async function handleApi(req, res, pathname, query) {
         if (plat === 'ny') list = await ny.hot(id, limit)
         else if (plat === 'tx') list = await qqPlaylistSongs(id, limit)
         else if (plat === 'kg') list = await kgPlaylistSongs(id, limit)
-        // 酷我无匿名歌单曲目接口，前端走「解析+匹配」导入，此处不误当网易云 id 处理
-        else if (plat === 'kw') { list = []; note = '酷我歌单歌曲请通过「解析+匹配」导入' }
+        // 酷我走开放接口 nplserver.kuwo.cn，可取完整歌单（无需登录/签名）
+        else if (plat === 'kw') list = await kwPlaylistSongs(id, limit)
         else list = await ny.hot(id, limit)
       } catch (e) {
         note = (plat === 'tx' ? 'QQ音乐' : plat === 'kg' ? '酷狗' : plat) + '歌单歌曲接口受限，暂无法播放'
